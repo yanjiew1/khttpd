@@ -1,6 +1,5 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-#include <linux/kthread.h>
 #include <linux/sched/signal.h>
 #include <linux/tcp.h>
 #include <linux/version.h>
@@ -19,6 +18,8 @@ module_param(backlog, ushort, S_IRUGO);
 static struct socket *listen_socket;
 static struct http_server_param param;
 static struct task_struct *http_server;
+
+struct workqueue_struct *khttpd_wq;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
 static int set_sock_opt(struct socket *sock,
@@ -159,6 +160,12 @@ static int __init khttpd_init(void)
         pr_err("can't open listen socket\n");
         return err;
     }
+    khttpd_wq = alloc_workqueue(MODULE_NAME, WQ_UNBOUND, 0);
+    if (!khttpd_wq) {
+        pr_err("can't allocate workqueue\n");
+        close_listen_socket(listen_socket);
+        return -ENOMEM;
+    }
     param.listen_socket = listen_socket;
     http_server = kthread_run(http_server_daemon, &param, KBUILD_MODNAME);
     if (IS_ERR(http_server)) {
@@ -174,6 +181,7 @@ static void __exit khttpd_exit(void)
     send_sig(SIGTERM, http_server, 1);
     kthread_stop(http_server);
     close_listen_socket(listen_socket);
+    destroy_workqueue(khttpd_wq);
     pr_info("module unloaded\n");
 }
 
