@@ -186,9 +186,9 @@ static void http_server_worker(struct work_struct *work)
 
 out:
     kfree(buf);
-    spin_lock(&daemon.lock);
+    spin_lock_irq(&daemon.lock);
     list_del(&worker->list);
-    spin_unlock(&daemon.lock);
+    spin_unlock_irq(&daemon.lock);
     kernel_sock_shutdown(socket, SHUT_RDWR);
     sock_release(socket);
     kfree(worker);
@@ -203,9 +203,9 @@ static struct work_struct *create_work(struct socket *sk)
 
     work->sock = sk;
     INIT_WORK(&work->khttpd_work, http_server_worker);
-    spin_lock(&daemon.lock);
+    spin_lock_irq(&daemon.lock);
     list_add(&work->list, &daemon.worker);
-    spin_unlock(&daemon.lock);
+    spin_unlock_irq(&daemon.lock);
     return &work->khttpd_work;
 }
 
@@ -215,11 +215,11 @@ static void free_work(void)
     struct khttpd *l, *tar;
     /* cppcheck-suppress uninitvar */
 
-    spin_lock(&daemon.lock);
+    spin_lock_irq(&daemon.lock);
     list_for_each_entry_safe (tar, l, &daemon.worker, list) {
         kernel_sock_shutdown(tar->sock, SHUT_RDWR);
     }
-    spin_unlock(&daemon.lock);
+    spin_unlock_irq(&daemon.lock);
 }
 
 int http_server_daemon(void *arg)
