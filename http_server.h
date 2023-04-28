@@ -13,6 +13,7 @@ struct http_server_param {
 struct http_service {
     bool is_stopped;
     struct list_head worker;
+    spinlock_t lock;
 };
 
 struct khttpd {

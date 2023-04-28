@@ -185,8 +185,13 @@ static void http_server_worker(struct work_struct *work)
     }
 
 out:
-    kernel_sock_shutdown(socket, SHUT_RDWR);
     kfree(buf);
+    spin_lock(&daemon.lock);
+    list_del(&worker->list);
+    spin_unlock(&daemon.lock);
+    kernel_sock_shutdown(socket, SHUT_RDWR);
+    sock_release(socket);
+    kfree(worker);
 }
 
 static struct work_struct *create_work(struct socket *sk)
@@ -198,7 +203,9 @@ static struct work_struct *create_work(struct socket *sk)
 
     work->sock = sk;
     INIT_WORK(&work->khttpd_work, http_server_worker);
+    spin_lock(&daemon.lock);
     list_add(&work->list, &daemon.worker);
+    spin_unlock(&daemon.lock);
     return &work->khttpd_work;
 }
 
@@ -208,12 +215,11 @@ static void free_work(void)
     struct khttpd *l, *tar;
     /* cppcheck-suppress uninitvar */
 
+    spin_lock(&daemon.lock);
     list_for_each_entry_safe (tar, l, &daemon.worker, list) {
         kernel_sock_shutdown(tar->sock, SHUT_RDWR);
-        flush_work(&tar->khttpd_work);
-        sock_release(tar->sock);
-        kfree(tar);
     }
+    spin_unlock(&daemon.lock);
 }
 
 int http_server_daemon(void *arg)
@@ -225,6 +231,7 @@ int http_server_daemon(void *arg)
     allow_signal(SIGKILL);
     allow_signal(SIGTERM);
 
+    spin_lock_init(&daemon.lock);
     while (!kthread_should_stop()) {
         int err = kernel_accept(param->listen_socket, &socket, 0);
         if (err < 0) {
@@ -244,5 +251,6 @@ int http_server_daemon(void *arg)
     }
     daemon.is_stopped = true;
     free_work();
+
     return 0;
 }
