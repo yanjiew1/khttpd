@@ -103,7 +103,10 @@ static int http_parser_callback_request_url(http_parser *parser,
                                             size_t len)
 {
     struct http_request *request = parser->data;
-    strncat(request->request_url, p, len);
+    if (len > 127)
+        len = 127;
+    strncpy(request->request_url, p, len);
+    request->request_url[len] = '\0';
     return 0;
 }
 
